@@ -1,0 +1,428 @@
+{
+  "info": {
+    "name": "Tessera",
+    "description": "Tessera API happy path and negative cases. WebSocket flows are documented here, but Postman does not reliably export WS requests inside a v2.1 collection. Use cmd/driversim or websocat for live socket verification.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "f4d3a70d-6ef0-47d9-a1bb-21a47a4c2bd4"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080", "type": "string" },
+    { "key": "riderToken", "value": "rider-demo-token", "type": "string" },
+    { "key": "driverToken", "value": "driver-demo-token", "type": "string" },
+    { "key": "adminToken", "value": "admin-demo-token", "type": "string" },
+    { "key": "driverId", "value": "driver-1", "type": "string" },
+    { "key": "quoteId", "value": "", "type": "string" },
+    { "key": "tripId", "value": "", "type": "string" },
+    { "key": "offerId", "value": "", "type": "string" },
+    { "key": "idempotencyKey", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Auth / Setup",
+      "item": [
+        {
+          "name": "Health",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "var body = pm.response.json();",
+                  "pm.expect(body.ok).to.eql(true);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz"
+          }
+        },
+        {
+          "name": "Metrics",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "var body = pm.response.json();",
+                  "pm.expect(body.status).to.eql(\"ok\");"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/metrics"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Quotes",
+      "item": [
+        {
+          "name": "Create quote",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.environment.set(\"idempotencyKey\", Date.now().toString() + '-' + Math.random().toString(36).slice(2, 8));"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "var body = pm.response.json();",
+                  "pm.expect(body.ok).to.eql(true);",
+                  "if (body.quote_id) { pm.environment.set(\"quoteId\", body.quote_id); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pickup\": {\"lat\": 40.7128, \"lng\": -74.0060},\n  \"dropoff\": {\"lat\": 40.7266, \"lng\": -73.9940},\n  \"currency\": \"USD\"\n}"
+            },
+            "url": "{{baseUrl}}/v1/rides/quote"
+          }
+        },
+        {
+          "name": "Expired quote rejected",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status is 400 or 409\", function () {\n                    pm.expect([400, 409]).to.include(pm.response.code);\n                  });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{riderToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quote_id\": \"expired-quote-id\",\n  \"idempotency_key\": \"expired-key\"\n}"
+            },
+            "url": "{{baseUrl}}/v1/rides"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Rides (rider)",
+      "item": [
+        {
+          "name": "Create ride",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.environment.set(\"idempotencyKey\", Date.now().toString() + '-' + Math.random().toString(36).slice(2, 8));"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status is 201\", function () { pm.response.to.have.status(201); });",
+                  "var body = pm.response.json();",
+                  "pm.expect(body.ok).to.eql(true);",
+                  "if (body.trip_id) { pm.environment.set(\"tripId\", body.trip_id); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{riderToken}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quote_id\": \"{{quoteId}}\",\n  \"pickup\": {\"lat\": 40.7128, \"lng\": -74.0060},\n  \"dropoff\": {\"lat\": 40.7266, \"lng\": -73.9940}\n}"
+            },
+            "url": "{{baseUrl}}/v1/rides"
+          }
+        },
+        {
+          "name": "Duplicate Idempotency-Key rejected",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Request is rejected as duplicate\", function () {\n                    pm.expect([200, 409]).to.include(pm.response.code);\n                  });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{riderToken}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{idempotencyKey}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quote_id\": \"{{quoteId}}\",\n  \"pickup\": {\"lat\": 40.7128, \"lng\": -74.0060},\n  \"dropoff\": {\"lat\": 40.7266, \"lng\": -73.9940}\n}"
+            },
+            "url": "{{baseUrl}}/v1/rides"
+          }
+        },
+        {
+          "name": "View ride",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "var body = pm.response.json();",
+                  "if (body.trip_id) { pm.environment.set(\"tripId\", body.trip_id); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{riderToken}}" }
+            ],
+            "url": "{{baseUrl}}/v1/rides/{{tripId}}"
+          }
+        },
+        {
+          "name": "Cancel ride",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Request is accepted or rejected by state logic\", function () {\n                    pm.expect([200, 409]).to.include(pm.response.code);\n                  });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{riderToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"rider_cancelled\"\n}"
+            },
+            "url": "{{baseUrl}}/v1/rides/{{tripId}}/cancel"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Driver Actions",
+      "item": [
+        {
+          "name": "Driver online",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "var body = pm.response.json();",
+                  "pm.expect(body.ok).to.eql(true);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{driverToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lat\": 40.7128,\n  \"lng\": -74.0060\n}"
+            },
+            "url": "{{baseUrl}}/v1/drivers/{{driverId}}/online"
+          }
+        },
+        {
+          "name": "Accept own or assigned offer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Request is accepted or rejected by role/state gate\", function () {\n                    pm.expect([200, 403, 409]).to.include(pm.response.code);\n                  });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{driverToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trip_id\": \"{{tripId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/v1/offers/{{offerId}}/accept"
+          }
+        },
+        {
+          "name": "Arrived",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{driverToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trip_id\": \"{{tripId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/v1/trips/{{tripId}}/arrived"
+          }
+        },
+        {
+          "name": "Start trip",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{driverToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trip_id\": \"{{tripId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/v1/trips/{{tripId}}/start"
+          }
+        },
+        {
+          "name": "Complete trip",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{driverToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"trip_id\": \"{{tripId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/v1/trips/{{tripId}}/complete"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Pricing rule sets",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status is 200\", function () { pm.response.to.have.status(200); });",
+                  "var body = pm.response.json(); pm.expect(body.ok).to.eql(true);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": "{{baseUrl}}/v1/admin/pricing/rule-sets"
+          }
+        },
+        {
+          "name": "Surge cells",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": "{{baseUrl}}/v1/admin/surge/cells"
+          }
+        },
+        {
+          "name": "Reconciliation",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+            ],
+            "url": "{{baseUrl}}/v1/admin/reconciliation"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health / Metrics",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz"
+          }
+        },
+        {
+          "name": "Metrics scrape",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/metrics"
+          }
+        }
+      ]
+    }
+  ]
+}

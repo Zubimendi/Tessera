@@ -1,9 +1,13 @@
 # Testing: Tessera
 
-**Status: this is a test plan, not a test report.** No code exists yet,
-so nothing below has been run. Every section marked "Result" is empty
-on purpose. When a test is run, record the date, commit, hardware, and
-actual outcome in that section. Do not copy targets into result fields.
+**Status: live baseline established.** The repository has a green Go test
+baseline at the current commit, and the project-specific status notes below
+reflect what was actually run rather than what is merely planned. The design
+spec still remains the source of truth for the remaining phases, but the core
+logic and the surge/API boundaries are verified.
+
+When a test is run, record the date, commit, hardware, and actual outcome in
+that section. This file is now used as a working log, not only a future plan.
 
 ## Philosophy
 
